@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context=".MainActivity">
+
+    <!-- LinearLayout to align buttons horizontally and center them -->
+
+    <!-- 使用自定义的 AspectRatioFrameLayout 来保持 4:3 比例 -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/aspect_ratio_frame_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- 用于显示视频流的 PreviewView -->
+        <androidx.camera.view.PreviewView
+            android:id="@+id/textureView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintDimensionRatio="3:4"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 在视频流上绘制的 View -->
+        <com.example.myapplication.objectResult_view
+            android:id="@+id/Object_box_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- 显示拍摄后照片的 ImageView，默认隐藏 -->
+        <ImageView
+            android:id="@+id/photoPreview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:scaleType="centerCrop" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <LinearLayout
+        android:id="@+id/linearLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="32dp"
+        android:orientation="horizontal">
+
+        <!-- Start Camera Button -->
+        <Button
+            android:id="@+id/buttonTakePhoto"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/take_photo"/>
+
+        <Button
+            android:id="@+id/startCameraButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/record_video" />
+
+<!--        &lt;!&ndash; Add some spacing between the buttons &ndash;&gt;-->
+<!--        <Space-->
+<!--            android:layout_width="16dp"-->
+<!--            android:layout_height="wrap_content" />-->
+
+        <!-- Stop Camera Button -->
+        <Button
+            android:id="@+id/stopCameraButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/Stop_video" />
+        <!-- 确认按钮，默认隐藏 -->
+        <Button
+            android:id="@+id/confirmButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Confirm"
+            android:visibility="gone"/>
+
+        <!-- 取消按钮，默认隐藏 -->
+        <Button
+            android:id="@+id/cancelButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Cancel"
+            android:visibility="gone"/>
+    </LinearLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
