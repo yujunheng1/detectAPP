@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 #include "YoloLayer.h"
-#include "utils.h"
+
 
 
 
@@ -62,11 +62,11 @@ public:
     };
 
 private:
-    void generate_proposals(std::vector<GridAndStride> grid_strides, const ncnn::Mat& pred, float prob_threshold, std::vector<Object_box>& objects);
+    void generate_proposals(const std::vector<GridAndStride> grid_strides, const ncnn::Mat& pred, const float prob_threshold, std::vector<Object_box>& objects);
     void generate_grids_and_stride(const int target_w, const int target_h, std::vector<int>& strides, std::vector<GridAndStride>& grid_strides);
-    //void nms_sorted_bboxes(const std::vector<Object_box>& faceobjects, std::vector<int>& picked, float nms_threshold);
-    //void qsort_descent_inplace(std::vector<Object_box>& faceobjects, int left, int right);
-    //void qsort_descent_inplace(std::vector<Object_box>& faceobjects);
+    void nms_sorted_bboxes(const std::vector<Object_box>& dectobjects, std::vector<int>& picked, float nms_threshold);
+    void qsort_descent_inplace(std::vector<Object_box>& faceobjects, int left, int right);
+    void qsort_descent_inplace(std::vector<Object_box>& faceobjects);
     void extract_output_layer(ncnn::Extractor &ex, ncnn::Mat& out, std::vector<Object_box> &result,const ncnn::Mat &in_pad,const float &threshold);
     void detect_infer(ncnn::Extractor& ex, ncnn::Mat &in_net, std::vector<Object_box>&results, const float threshold, const float nms_threshold,const ncnn::Mat &in_pad);
     // NCNN Network

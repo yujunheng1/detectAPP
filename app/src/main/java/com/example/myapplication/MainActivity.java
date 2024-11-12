@@ -1,6 +1,5 @@
 package com.example.myapplication;
 
-import static androidx.camera.core.CameraX.*;
 
 import android.Manifest;
 import android.app.ActivityManager;
@@ -9,46 +8,31 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.ImageFormat;
-import android.graphics.Matrix;
 
 import androidx.camera.core.AspectRatio;
-import androidx.camera.core.CameraX;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.ImageProxy;
-import com.example.myapplication.databinding.ActivityMainBinding;
 
-import android.graphics.Paint;
-import android.media.ExifInterface;
-import android.media.Image;
-import android.media.ImageReader;
+
+
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
-import android.os.HandlerThread;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
-import android.util.Size;
+import android.view.MotionEvent;
 import android.view.Surface;
-import android.view.TextureView;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.Toast;
-import android.graphics.YuvImage;
-import android.graphics.Rect;
-import android.graphics.BitmapFactory;
 import androidx.camera.core.Preview;
-import androidx.camera.core.UseCase;
-import androidx.camera.core.impl.ImageAnalysisConfig;
 import androidx.camera.lifecycle.ProcessCameraProvider;
-
+import android.view.GestureDetector;
 
 
 import androidx.annotation.NonNull;
@@ -57,16 +41,11 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.example.myapplication.databinding.ActivityMainBinding;
 import com.google.common.util.concurrent.ListenableFuture;
 
 
-import java.io.ByteArrayOutputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.File;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
@@ -75,75 +54,96 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private ActivityMainBinding activityMainBinding;
-
     private static final int CAMERA_REQUEST_CODE = 100;
-    private PreviewView textureView;
-    private yolo8 yoloDetector =null;
-    private long lastProcessedTime = 0;
-    private static final long PROCESS_INTERVAL_MS = 1000; // 1秒
+    private PreviewView textureView;// use for preview the video stream
+    private yolo8 yoloDetector =null; //use for yolo model
 
-    private ImageReader imageReader;
-    private long lastAnalysisTime = 0;
-    AssetManager assetManager;
-    private boolean useGPU=false;
-    private List<Object_box> ObjectLists= new ArrayList<>();
+    AssetManager assetManager;//use for get the resource of model,point to the asset
+    private boolean useGPU=false;// detect gpu
     private objectResult_view Object_box_view;
-    private ImageModel imageHandlerFromProxy;
+    private ImageModel imageHandlerFromProxy; //use for transfer the image form the video
 
-    ExecutorService detectService = Executors.newSingleThreadExecutor();
+    ExecutorService detectService = Executors.newSingleThreadExecutor();// thread for detect
 
-    private int frameCount = 10;
+    // Constant to define the number of frames to be processed (used for FPS calculations)
+    private final int frameCount = 10;
+
+    // Counter to keep track of the number of frames processed
     private int frameCounter = 0;
+
+    // Timestamp for the last frame-per-second (FPS) calculation, used to determine when to update the FPS display
     private long lastFpsTimestamp = 0;
-    protected Bitmap mutableBitmap;
-    private Button startCameraButton;
+
+    // Button to stop the camera feed
     private Button stopCameraButton;
+
+    // Button to take a photo from the camera
     private Button buttonTakePhoto;
-    //private static final int CAMERA_REQUEST_CODE = 1001; // 用于打开相机
-    private static final int VIDEO_REQUEST_CODE = 1002;  // 用于录像
+
+    //private static final int CAMERA_REQUEST_CODE = 1001;
     private int type_camera=0;
 
+    private TextToSpeech textToSpeech;
+    private GestureDetector gestureDetector; //use for take picture double click
+    private ListenableFuture<ProcessCameraProvider> cameraProviderFuture;
+    private ProcessCameraProvider processCameraProvider;
+    private int isInPreviewMode=1; //flag to previewModel 1: take photo view 0: confirm this picture view
+    private File photoFile;
+    private ImageHandler imageHandlerFromPath;
+    private boolean isConfirm=false;
+    private Uri imagePath;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         activityMainBinding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(activityMainBinding.getRoot());
+        long startTime = System.currentTimeMillis();
 
-        setContentView(R.layout.activity_main);
         assetManager = getAssets();
         textureView = findViewById(R.id.textureView);
         Object_box_view = findViewById(R.id.Object_box_view);
-        startCameraButton = findViewById(R.id.startCameraButton);
         stopCameraButton = findViewById(R.id.stopCameraButton);
         buttonTakePhoto=findViewById(R.id.buttonTakePhoto);
+        textToSpeech = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status == TextToSpeech.SUCCESS) {
+                    int result = textToSpeech.setLanguage(Locale.US);
+                    if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        Log.e("TTS", "Language not supported");
+                    }
+                } else {
+                    Log.e("TTS", "Initialization failed");
+                }
+            }
+        });
 
-        requestCameraPermission();
+
+
 
         Intent intent = getIntent();
         type_camera = intent.getIntExtra("typecamera", 0);
 
-    }
+        requestCameraPermission();
 
+
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        Log.d("StartupTime", "App startup time: " + elapsedTime + " ms");
+    }
+    // Method to check if GPU support is available and use it if supported
     private boolean checkAndUseGPU() {
-        if (isGPUSupported()) {
-            Toast.makeText(this, "Using GPU for processing.", Toast.LENGTH_SHORT).show();
-            return true;
-        } else {
-            Toast.makeText(this, "GPU is not supported. Using CPU.", Toast.LENGTH_SHORT).show();
-            return false;
-        }
+        return isGPUSupported();
     }
-
+    // Method to determine if the device supports OpenGL ES 3.0 or higher
     private boolean isGPUSupported() {
         try {
             ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-            return activityManager.getDeviceConfigurationInfo().reqGlEsVersion >= 0x00030000; // OpenGL ES 3.0 及以上
+            return activityManager.getDeviceConfigurationInfo().reqGlEsVersion >= 0x00030000; // OpenGL ES 3.0
         } catch (Exception e) {
             return false;
         }
     }
-
+    // Method to request camera permission from the user
     private void requestCameraPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_REQUEST_CODE);
@@ -151,7 +151,7 @@ public class MainActivity extends AppCompatActivity {
             startCameraPreview(type_camera);
         }
     }
-
+    // Callback method when the user responds to the camera permission request
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -159,65 +159,45 @@ public class MainActivity extends AppCompatActivity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startCameraPreview(type_camera);
             } else {
-                startCameraButton.setBackgroundColor(getResources().getColor(R.color.button_default_color));
-                Toast.makeText(this, "Camera permission is declined", Toast.LENGTH_SHORT).show();
+                //startCameraButton.setBackgroundColor(getResources().getColor(R.color.button_default_color));
+//                if (toast != null) {
+//                    toast.cancel();
+//                }
+//                Toast.makeText(this, "Camera permission is declined", Toast.LENGTH_SHORT).show();
             }
         }
     }
-
+    //a thread for loading model to speedup
     private void loadYOLOModelInBackground() {
         new Thread(() -> {
-            // 模型加载可以在这里进行，独立于相机启动
             long modelStartTime = System.currentTimeMillis();
-            imageHandlerFromProxy=new ImageModel();
-
-            // 初始化YOLO模型
-            //yoloDetector = new YOLO5(assetManager, useGPU);
+            imageHandlerFromProxy = new ImageModel();
             yoloDetector = new yolo8(assetManager, useGPU);
 
             long modelEndTime = System.currentTimeMillis();
             long modelDuration = modelEndTime - modelStartTime;
+
+//            runOnUiThread(() -> {
+//                speak("Start, Take phone, by double-tap the screen, confirm and swap left to ask AI of this photo, cancel to undo");
+//
+//            });
+
             Log.d("YOLOModel", "YOLO model loaded in " + modelDuration + " ms");
 
         }).start();
     }
 
 
-        // 获取旋转角度的函数
-        private int getRotationAngle(String imagePath) {
-            int rotation = 0;
-            try {
-                ExifInterface exif = new ExifInterface(imagePath);
-                int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
-                switch (orientation) {
-                    case ExifInterface.ORIENTATION_ROTATE_90:
-                        rotation = 90;
-                        break;
-                    case ExifInterface.ORIENTATION_ROTATE_180:
-                        rotation = 180;
-                        break;
-                    case ExifInterface.ORIENTATION_ROTATE_270:
-                        rotation = 270;
-                        break;
-                    default:
-                        rotation = 0;
-                        break;
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return rotation;
-        }
-
-    // 旋转 Bitmap 的函数
-    private Bitmap rotateBitmap(Bitmap bitmap, int angle) {
-        Matrix matrix = new Matrix();
-        matrix.postRotate(angle);
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
-    }
-
+    /**
+     * Captures a photo using the provided ImageCapture instance.
+     *
+     * @param imageCapture The ImageCapture instance used to take the photo.
+     * @param isSave A boolean flag indicating whether to save the captured photo to storage.
+     */
     private void takePhoto(ImageCapture imageCapture,boolean isSave) {
-        File photoFile = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "photo.jpg");
+        speak("Finish");
+
+        photoFile = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "photo.jpg");
         ImageCapture.OutputFileOptions outputOptions = new ImageCapture.OutputFileOptions.Builder(photoFile).build();
 
         imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this),
@@ -225,125 +205,137 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
 
+                        imageHandlerFromPath = new ImageHandler(photoFile.getAbsolutePath());
 
-                        ImageHandler imageHandlerFromPath = new ImageHandler(photoFile.getAbsolutePath());
-
-                        // 显示定格的图片在 ImageView
                         ImageView photoPreview = findViewById(R.id.photoPreview);
                         photoPreview.setImageBitmap(imageHandlerFromPath.getBitmap());
                         photoPreview.setVisibility(View.VISIBLE);
 
                         findViewById(R.id.buttonTakePhoto).setVisibility(View.GONE);
-                        findViewById(R.id.startCameraButton).setVisibility(View.GONE);
+                        //findViewById(R.id.startCameraButton).setVisibility(View.GONE);
                         findViewById(R.id.stopCameraButton).setVisibility(View.GONE);
 
-                        // 隐藏拍照按钮，显示确认按钮
                         findViewById(R.id.confirmButton).setVisibility(View.VISIBLE);
                         findViewById(R.id.cancelButton).setVisibility(View.VISIBLE);
+                        isInPreviewMode=0;
 
-                        // 点击确认按钮
+                        //check confirm button
                         findViewById(R.id.confirmButton).setOnClickListener(v -> {
-                            // 返回上一个页面并附加图片
-                            Intent resultIntent = new Intent();
-                            if (isSave) {
-                                // 如果 isSave 为 true，保存图片并返回 URI
-                                resultIntent.putExtra("photo_uri", Uri.fromFile(photoFile).toString());
-                            } else {
-                                // 如果不保存，仅返回图片 URI
-                                photoFile.delete(); // 删除临时文件
-                                resultIntent.putExtra("photo_uri", Uri.fromFile(photoFile).toString());
-                            }
+                            confirmPhone(isSave);
 
-                            setResult(RESULT_OK, resultIntent);
-                            finish(); // 结束当前页面并返回
+                            finishPhoto();
                         });
 
                         findViewById(R.id.cancelButton).setOnClickListener(v -> {
-                            // 取消操作并回到拍照状态
-                            photoPreview.setVisibility(View.GONE); // 隐藏照片预览
-                            findViewById(R.id.confirmButton).setVisibility(View.GONE); // 隐藏确认按钮
-                            findViewById(R.id.cancelButton).setVisibility(View.GONE); // 隐藏取消按钮
-
-                            // 显示原来的拍照和视频按钮
-                            findViewById(R.id.buttonTakePhoto).setVisibility(View.VISIBLE);
-                            buttonTakePhoto.setBackgroundColor(getResources().getColor(R.color.button_default_color)); // 恢复颜色
-
-                            findViewById(R.id.startCameraButton).setVisibility(View.VISIBLE);
-                            findViewById(R.id.stopCameraButton).setVisibility(View.VISIBLE);
+                            isConfirm=false;
+                            finishPhoto();
                         });
                     }
 
                     @Override
                     public void onError(@NonNull ImageCaptureException exception) {
-                        // 错误处理
                         Log.e("CameraPreview", "Error taking picture: " + exception.getMessage());
                     }
                 });
     }
 
+    private void confirmPhone(boolean isSave ){
+        speak("confirm");
+        Intent resultIntent = new Intent();
+        isConfirm=true;
+        imageHandlerFromPath.saveBitmapToFile(this,"Bitmap.jpg");
+        // Retrieve the URI of the saved image
+        imagePath=imageHandlerFromPath.getImageUri();
+        //if set up this activity form the chat activity, then return the image url
+        if (type_camera == 1) {
+            speak("Jump");
 
+            resultIntent.putExtra("photo_uri", imagePath);
+
+            setResult(RESULT_OK, resultIntent);
+            finish();
+        }
+
+
+    }
+
+
+
+    private void finishPhoto(){
+        ImageView photoPreview = findViewById(R.id.photoPreview);
+        photoPreview.setVisibility(View.GONE);
+        findViewById(R.id.confirmButton).setVisibility(View.GONE);
+
+        findViewById(R.id.cancelButton).setVisibility(View.GONE);
+
+
+        findViewById(R.id.buttonTakePhoto).setVisibility(View.VISIBLE);
+        buttonTakePhoto.setBackgroundColor(getResources().getColor(R.color.button_default_color)); // recover color
+
+        findViewById(R.id.stopCameraButton).setVisibility(View.VISIBLE);
+    }
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        return gestureDetector.onTouchEvent(event);
+    }
+    // refer cameraX :https://github.com/android/camera-samples/
     private void startCameraPreview(int type_camera) {
         long startTime = System.currentTimeMillis();
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
+        cameraProviderFuture = ProcessCameraProvider.getInstance(this);
 
         cameraProviderFuture.addListener(() -> {
             try {
-                ProcessCameraProvider processCameraProvider = cameraProviderFuture.get();
-
-
+                processCameraProvider = cameraProviderFuture.get();
                 PreviewView viewFinder = (PreviewView)findViewById(R.id.textureView);
-                Preview preview = new Preview.Builder()
-                        .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                        .setTargetRotation(textureView.getDisplay().getRotation())
-                        //.setTargetResolution(new Size(480, 640))
-                        .build();
-                preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
-
                 //select camera
                 CameraSelector cameraSelector = new CameraSelector.Builder()
                         .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                         .build();
+                int rotation = viewFinder.getDisplay() != null ? viewFinder.getDisplay().getRotation() : Surface.ROTATION_0;
+
+                Preview preview = new Preview.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                        .setTargetRotation(rotation)
+                        .build();
+                preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
+
+
                 //use for saving image
                 ImageCapture imageCapture = new ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .build();
                 processCameraProvider.unbindAll();
                 if (type_camera == 0) {
-                    // type_camera 为 0 时，初始化 ImageAnalysis、加载 YOLO 模型并设置定时分析
+                    // type_camera = 0 ，loading model add analyiss
                     useGPU = checkAndUseGPU();
                     ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
                             .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                            //.setTargetResolution(new Size(480, 640))
-                            .setTargetRotation(textureView.getDisplay().getRotation())
+                            .setTargetRotation(rotation)
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            //.setTargetRotation(Surface.ROTATION_90)
                             .build();
 
-                    // 设置定时分析任务
+
                     imageAnalysis.setAnalyzer(detectService, new DetectAnalyzer());
 
-                    // 绑定 Preview 和 ImageAnalysis
+
                     processCameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis,imageCapture);
 
 
                     loadYOLOModelInBackground();
 
-                    // 打印启动时间
+                    speak("Start, Take phone, by double-tap the screen, confirm and swap left to ask AI of this photo, cancel to undo");
                     long endTime = System.currentTimeMillis();
                     long duration = endTime - startTime;
                     Log.d("CameraPreview", "Camera preview with analysis and YOLO started in " + duration + " ms");
                 }else if(type_camera == 1){
 
-
-                    // 绑定 Preview 和 ImageCapture
                     processCameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture);
-
-                    // 打印启动时间
+                    //
                     long endTime = System.currentTimeMillis();
                     long duration = endTime - startTime;
+                    speak("By double-tap the screen");
                     Log.d("CameraPreview", "Camera preview with capture mode started in " + duration + " ms");
 
-                    // 设置拍照按钮监听器
 
                 }
                 Object_box_view.setTextureViewSize(textureView.getLeft(),textureView.getTop(),textureView.getRight(),textureView.getBottom());
@@ -352,22 +344,49 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onClick(View v) {
                         v.setBackgroundColor(getResources().getColor(R.color.button_pressed_color));
-                        takePhoto(imageCapture, true);  // 拍照方法
+                        takePhoto(imageCapture, false);
                         Log.d("CameraPreview", "Take a picture");
                     }
                 });
 
+                //overwrite gesture
+                gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
 
-                startCameraButton.setOnClickListener(new View.OnClickListener() {
                     @Override
-                    public void onClick(View v) {
-                        v.setBackgroundColor(getResources().getColor(R.color.button_pressed_color));
+                    public boolean onDoubleTap(MotionEvent e) {
+                        handleDoubleTap(imageCapture);
+                        return true;
                     }
+                    @Override
+                    public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+
+                        float diffX = e2.getX() - e1.getX();
+                        float diffY = e2.getY() - e1.getY();
+
+                        final int SWIPE_THRESHOLD = 100;
+                        final int SWIPE_VELOCITY_THRESHOLD = 100;
+
+                        if (Math.abs(diffX) > Math.abs(diffY)) {
+                            if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                                if (diffX > 0) {
+                                    handleSwipeRight();
+                                }
+                                //else {
+//                                    handleSwipeLeft();
+//                                }
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+
                 });
+
 
                 stopCameraButton.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
+                        v.setBackgroundColor(getResources().getColor(R.color.button_pressed_color));
                         stopCamera();
                     }
                 });
@@ -378,7 +397,9 @@ public class MainActivity extends AppCompatActivity {
             }
         }, ContextCompat.getMainExecutor(this));
         loadYOLOModelInBackground();
+
     }
+
 
 
     private class DetectAnalyzer implements ImageAnalysis.Analyzer {
@@ -388,23 +409,21 @@ public class MainActivity extends AppCompatActivity {
             int videoHeight = image.getHeight();
             Log.d("CameraX", "Video resolution: " + videoWidth + "x" + videoHeight);
             imageHandlerFromProxy.setImage(image);
-            detectbymodel();
+            detectBymModel();
         }
     }
 
-    private void detectbymodel() {
+    private void detectBymModel() {
         if (detectService == null) {
             return;
         }
-//        ImageModel imageHandlerFromProxy = new ImageModel(image);
-//        imageHandlerFromProxy
         logFPS(imageHandlerFromProxy.getTranbitmap());
 
         int videoWidth = imageHandlerFromProxy.getWidth();
         int videoHeight = imageHandlerFromProxy.getHeight();
         Log.d("CameraX", "Video resolution: " + videoWidth + "x" + videoHeight);
         boolean draw=detectDraw(imageHandlerFromProxy.getRotatebitmap());
-        if (draw==false){
+        if (!draw){
             Log.d("DetectionResult", "No detect object no draw ");
         }
         else{
@@ -412,15 +431,13 @@ public class MainActivity extends AppCompatActivity {
         }
         //updateUIWithDetectionResults();
         imageHandlerFromProxy.clear();
-        //image.close();
     }
+
+    //draw the bounding box
     private boolean detectDraw(Bitmap bitmap){
+
         List<Object_box> result = yoloDetector.detect(bitmap, 0.6f, 0.6f);
-        int resultSize = result.size();
-        if(resultSize==0){
-            Object_box_view.clearCanvas();
-            return false;
-        }
+
         int videoWidth=bitmap.getWidth();
         int videoHeight=bitmap.getHeight();
 
@@ -447,26 +464,114 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    void speak(String text) {
+        if (textToSpeech != null) {
+            textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, null);
+        }
+    }
+
+    /**
+     * Interface to other activities, send images url
+     */
+//    private void handleSwipeLeft() {
+//
+//
+//
+//        if(isConfirm){
+////            imageHandlerFromPath.saveBitmapToFile(this,"Bitmap.jpg");
+////            Uri imagePath=imageHandlerFromPath.getImageUri();
+//
+//            speak("Jump");
+//            Intent resultIntent = new Intent(CameraActivity.this, ChatActivity.class);
+//            if(imagePath!=null) {
+//                resultIntent.putExtra("send_image", true);
+//                resultIntent.putExtra("photo_uri", imagePath);
+//            }
+//            else{
+//                resultIntent.putExtra("send_image", false);
+//            }
+//            startActivity(resultIntent);
+//            finish();
+//        }
+//        else{
+//            Intent intent = new Intent(CameraActivity.this, ChatActivity.class);
+//            intent.putExtra("send_image", false);
+//            startActivity(intent);
+//            finish();
+//        }
+//    }
+
+    // deal the different gesture event: swipe right return previous page
+    private void handleSwipeRight() {
+        if(isInPreviewMode==0){
+            isInPreviewMode=1;
+            isConfirm=false;
+            finishPhoto();
+        }
+        else{
+            isConfirm=false;
+            stopCamera();
+        }
+    }
+    //double tap for take photo or confirm the image
+    private void handleDoubleTap(ImageCapture imageCapture){
+        if(isInPreviewMode==1) {
+            Log.d("Gesture", "Double tap detected");
+            buttonTakePhoto.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(getApplicationContext(), R.color.button_pressed_color)));
+            takePhoto(imageCapture, false);
+            isInPreviewMode=0;
+        }
+        else {
+            confirmPhone(false);
+            finishPhoto();
+            isInPreviewMode=1;
+        }
+    }
+
+
+
+    private void stopCameraInstance() {
+        speak("return");
+        if (processCameraProvider != null) {
+            processCameraProvider.unbindAll();  //unbind all the instance
+        }
+    }
 
     private void stopCamera() {
-
-        try {
-            if (yoloDetector != null) {
-                yoloDetector.release();
-                yoloDetector = null;
-            }
-            if (detectService != null) {
-                detectService.shutdown();
-                detectService = null; // 释放资源
-            }
-            if(imageHandlerFromProxy!=null){
-                imageHandlerFromProxy.release();
-                imageHandlerFromProxy=null;
-            }
-        } catch (Exception e) {
-            Log.e("CameraStop", "Error stopping camera: " + e.getMessage());
-            e.printStackTrace();
+        stopCameraInstance();
+        finish();
+    }
+    @Override
+    protected void onPause() {
+        super.onPause();
+        stopCameraInstance();
+    }
+    protected void onResume() {
+        super.onResume();
+        if (processCameraProvider == null) {
+            startCameraPreview(type_camera);
+        }
+        else {
+            stopCameraInstance();
+            startCameraPreview(type_camera);
+        }
+    }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (yoloDetector != null) {
+            yoloDetector.release();
+            yoloDetector = null;
+        }
+        if (detectService != null) {
+            detectService.shutdown();
+            detectService = null;
+        }
+        if(textToSpeech!=null){
+            textToSpeech.stop();
+            textToSpeech.shutdown();
         }
 
+        stopCamera();
     }
 }

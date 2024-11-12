@@ -57,11 +57,11 @@
             android:layout_height="wrap_content"
             android:text="@string/take_photo"/>
 
-        <Button
-            android:id="@+id/startCameraButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/record_video" />
+<!--        <Button-->
+<!--            android:id="@+id/startCameraButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="@string/record_video" />-->
 
 <!--        &lt;!&ndash; Add some spacing between the buttons &ndash;&gt;-->
 <!--        <Space-->
