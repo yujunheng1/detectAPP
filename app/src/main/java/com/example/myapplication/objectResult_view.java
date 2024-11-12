@@ -175,11 +175,22 @@ public class objectResult_view extends View {
         this.currentDetectionResults = objects;
         invalidate();  // 重新绘制
     }
+    public void clearCanvas() {
+        // 清空检测结果
+        if (currentDetectionResults != null) {
+            currentDetectionResults.clear();
+        }
+        // 触发重绘以清除画布
+        invalidate();
+    }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         // 设置用于绘制边框的 Paint
+        if (currentDetectionResults == null || currentDetectionResults.isEmpty()) {
+            return;
+        }
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
         Paint paint = new Paint();
         paint.setStyle(Paint.Style.STROKE);
@@ -209,11 +220,11 @@ public class objectResult_view extends View {
             float scaleX = (float) (this.textureViewRight - this.textureViewLeft) / this.videoWidth; // X轴缩放比例
             float scaleY = (float) (this.textureViewBottom - this.textureViewTop) / this.videoHeight; // Y轴缩放比例
 
-            RectF rect = obj.getRect();
-            float left = rect.left * scaleX+this.textureViewLeft;
-            float top = rect.top * scaleY+this.textureViewTop;
-            float right = rect.right * scaleX+this.textureViewTop;
-            float bottom = rect.bottom * scaleY+this.textureViewLeft;
+
+            float left = obj.x +this.textureViewLeft;
+            float top = obj.y +this.textureViewTop;
+            float right = obj.w*scaleX+left;
+            float bottom = obj.h *scaleY+top;
 
             // 在 Canvas 上绘制矩形框
             canvas.drawRect(left, top, right, bottom, paint);
