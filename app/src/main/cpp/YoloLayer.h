@@ -29,6 +29,9 @@ struct YoloLayer {
 extern YoloLayer layer_801;
 extern YoloLayer layer_781;
 extern YoloLayer layer_out;
+extern YoloLayer layer_out_8;
+extern YoloLayer layer_out_16;
+extern YoloLayer layer_out_32;
 
 void initializeAnchors();
 #endif //MY_APPLICATION_YOLOLAYER_H

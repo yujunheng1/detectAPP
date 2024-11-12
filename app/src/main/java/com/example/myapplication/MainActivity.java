@@ -24,6 +24,7 @@ import androidx.camera.core.ImageProxy;
 import com.example.myapplication.databinding.ActivityMainBinding;
 
 import android.graphics.Paint;
+import android.media.ExifInterface;
 import android.media.Image;
 import android.media.ImageReader;
 import android.net.Uri;
@@ -77,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int CAMERA_REQUEST_CODE = 100;
     private PreviewView textureView;
-    private YOLO5 yoloDetector =null;
+    private yolo8 yoloDetector =null;
     private long lastProcessedTime = 0;
     private static final long PROCESS_INTERVAL_MS = 1000; // 1秒
 
@@ -87,6 +88,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean useGPU=false;
     private List<Object_box> ObjectLists= new ArrayList<>();
     private objectResult_view Object_box_view;
+    private ImageModel imageHandlerFromProxy;
 
     ExecutorService detectService = Executors.newSingleThreadExecutor();
 
@@ -112,11 +114,14 @@ public class MainActivity extends AppCompatActivity {
         assetManager = getAssets();
         textureView = findViewById(R.id.textureView);
         Object_box_view = findViewById(R.id.Object_box_view);
-         startCameraButton = findViewById(R.id.startCameraButton);
+        startCameraButton = findViewById(R.id.startCameraButton);
         stopCameraButton = findViewById(R.id.stopCameraButton);
         buttonTakePhoto=findViewById(R.id.buttonTakePhoto);
 
         requestCameraPermission();
+
+        Intent intent = getIntent();
+        type_camera = intent.getIntExtra("typecamera", 0);
 
     }
 
@@ -164,9 +169,11 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             // 模型加载可以在这里进行，独立于相机启动
             long modelStartTime = System.currentTimeMillis();
+            imageHandlerFromProxy=new ImageModel();
 
             // 初始化YOLO模型
-            yoloDetector = new YOLO5(assetManager, useGPU);
+            //yoloDetector = new YOLO5(assetManager, useGPU);
+            yoloDetector = new yolo8(assetManager, useGPU);
 
             long modelEndTime = System.currentTimeMillis();
             long modelDuration = modelEndTime - modelStartTime;
@@ -176,6 +183,39 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+        // 获取旋转角度的函数
+        private int getRotationAngle(String imagePath) {
+            int rotation = 0;
+            try {
+                ExifInterface exif = new ExifInterface(imagePath);
+                int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                switch (orientation) {
+                    case ExifInterface.ORIENTATION_ROTATE_90:
+                        rotation = 90;
+                        break;
+                    case ExifInterface.ORIENTATION_ROTATE_180:
+                        rotation = 180;
+                        break;
+                    case ExifInterface.ORIENTATION_ROTATE_270:
+                        rotation = 270;
+                        break;
+                    default:
+                        rotation = 0;
+                        break;
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return rotation;
+        }
+
+    // 旋转 Bitmap 的函数
+    private Bitmap rotateBitmap(Bitmap bitmap, int angle) {
+        Matrix matrix = new Matrix();
+        matrix.postRotate(angle);
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+    }
+
     private void takePhoto(ImageCapture imageCapture,boolean isSave) {
         File photoFile = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "photo.jpg");
         ImageCapture.OutputFileOptions outputOptions = new ImageCapture.OutputFileOptions.Builder(photoFile).build();
@@ -184,12 +224,13 @@ public class MainActivity extends AppCompatActivity {
                 new ImageCapture.OnImageSavedCallback() {
                     @Override
                     public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
-                        // 拍照成功后处理图像
-                        Bitmap imageBitmap = BitmapFactory.decodeFile(photoFile.getAbsolutePath());
+
+
+                        ImageHandler imageHandlerFromPath = new ImageHandler(photoFile.getAbsolutePath());
 
                         // 显示定格的图片在 ImageView
                         ImageView photoPreview = findViewById(R.id.photoPreview);
-                        photoPreview.setImageBitmap(imageBitmap);
+                        photoPreview.setImageBitmap(imageHandlerFromPath.getBitmap());
                         photoPreview.setVisibility(View.VISIBLE);
 
                         findViewById(R.id.buttonTakePhoto).setVisibility(View.GONE);
@@ -225,6 +266,8 @@ public class MainActivity extends AppCompatActivity {
 
                             // 显示原来的拍照和视频按钮
                             findViewById(R.id.buttonTakePhoto).setVisibility(View.VISIBLE);
+                            buttonTakePhoto.setBackgroundColor(getResources().getColor(R.color.button_default_color)); // 恢复颜色
+
                             findViewById(R.id.startCameraButton).setVisibility(View.VISIBLE);
                             findViewById(R.id.stopCameraButton).setVisibility(View.VISIBLE);
                         });
@@ -309,7 +352,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onClick(View v) {
                         v.setBackgroundColor(getResources().getColor(R.color.button_pressed_color));
-                        takePhoto(imageCapture, false);  // 拍照方法
+                        takePhoto(imageCapture, true);  // 拍照方法
                         Log.d("CameraPreview", "Take a picture");
                     }
                 });
@@ -344,36 +387,23 @@ public class MainActivity extends AppCompatActivity {
             int videoWidth = image.getWidth();
             int videoHeight = image.getHeight();
             Log.d("CameraX", "Video resolution: " + videoWidth + "x" + videoHeight);
-            detectbymodel(image);
+            imageHandlerFromProxy.setImage(image);
+            detectbymodel();
         }
     }
-    public Bitmap rotateBitmapClockwise90(Bitmap tranbitmap) {
-        // 创建一个新的 Matrix 对象
-        Matrix matrix = new Matrix();
 
-        // 设置旋转90度
-        matrix.postRotate(90);
-
-        // 使用 matrix 创建新的 Bitmap
-        Bitmap rotatedBitmap = Bitmap.createBitmap(tranbitmap, 0, 0, tranbitmap.getWidth(), tranbitmap.getHeight(), matrix, true);
-
-        return rotatedBitmap;
-    }
-    private void detectbymodel(ImageProxy image) {
-        final int imageRotationDegrees= image.getImageInfo().getRotationDegrees();
-        final Bitmap tranbitmap = imageToBitmap(image);
+    private void detectbymodel() {
         if (detectService == null) {
             return;
         }
-        Matrix matrix = new Matrix();
-        matrix.postRotate(imageRotationDegrees);
-        Bitmap bitmap = Bitmap.createBitmap(tranbitmap, 0, 0, tranbitmap.getWidth(), tranbitmap.getHeight(), matrix, false);
-        //Bitmap roBitmap=rotateBitmapClockwise90(bitmap);
-        logFPS(tranbitmap);
-        int videoWidth = image.getWidth();
-        int videoHeight = image.getHeight();
+//        ImageModel imageHandlerFromProxy = new ImageModel(image);
+//        imageHandlerFromProxy
+        logFPS(imageHandlerFromProxy.getTranbitmap());
+
+        int videoWidth = imageHandlerFromProxy.getWidth();
+        int videoHeight = imageHandlerFromProxy.getHeight();
         Log.d("CameraX", "Video resolution: " + videoWidth + "x" + videoHeight);
-        boolean draw=detectDraw(bitmap);
+        boolean draw=detectDraw(imageHandlerFromProxy.getRotatebitmap());
         if (draw==false){
             Log.d("DetectionResult", "No detect object no draw ");
         }
@@ -381,16 +411,16 @@ public class MainActivity extends AppCompatActivity {
             Log.d("DetectionResult", "Detected objects count ");
         }
         //updateUIWithDetectionResults();
-        image.close();
+        imageHandlerFromProxy.clear();
+        //image.close();
     }
     private boolean detectDraw(Bitmap bitmap){
         List<Object_box> result = yoloDetector.detect(bitmap, 0.6f, 0.6f);
         int resultSize = result.size();
         if(resultSize==0){
+            Object_box_view.clearCanvas();
             return false;
         }
-//        int videoWidth=bitmap.getWidth();
-//        int videoHeight=bitmap.getHeight();
         int videoWidth=bitmap.getWidth();
         int videoHeight=bitmap.getHeight();
 
@@ -398,11 +428,6 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-//    private void updateUIWithDetectionResults() {
-//        runOnUiThread(() -> {
-//            //activityCameraBinding.textPrediction.setText("Detected: Object");
-//        });
-//    }
 
 
     private void logFPS(Bitmap bitmap) {
@@ -423,48 +448,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
-
-
-
-    private Bitmap imageToBitmap(ImageProxy image) {
-        byte[] nv21 = imagetToNV21(image);
-
-        YuvImage yuvImage = new YuvImage(nv21, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        yuvImage.compressToJpeg(new Rect(0, 0, yuvImage.getWidth(), yuvImage.getHeight()), 100, out);
-        byte[] imageBytes = out.toByteArray();
-        try {
-            out.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
-    }
-
-    private byte[] imagetToNV21(ImageProxy image) {
-        ImageProxy.PlaneProxy[] planes = image.getPlanes();
-        ImageProxy.PlaneProxy y = planes[0];
-        ImageProxy.PlaneProxy u = planes[1];
-        ImageProxy.PlaneProxy v = planes[2];
-        ByteBuffer yBuffer = y.getBuffer();
-        ByteBuffer uBuffer = u.getBuffer();
-        ByteBuffer vBuffer = v.getBuffer();
-        int ySize = yBuffer.remaining();
-        int uSize = uBuffer.remaining();
-        int vSize = vBuffer.remaining();
-        byte[] nv21 = new byte[ySize + uSize + vSize];
-        // U and V are swapped
-        yBuffer.get(nv21, 0, ySize);
-        vBuffer.get(nv21, ySize, vSize);
-        uBuffer.get(nv21, ySize + vSize, uSize);
-
-        return nv21;
-    }
-
-
-
-
     private void stopCamera() {
 
         try {
@@ -475,6 +458,10 @@ public class MainActivity extends AppCompatActivity {
             if (detectService != null) {
                 detectService.shutdown();
                 detectService = null; // 释放资源
+            }
+            if(imageHandlerFromProxy!=null){
+                imageHandlerFromProxy.release();
+                imageHandlerFromProxy=null;
             }
         } catch (Exception e) {
             Log.e("CameraStop", "Error stopping camera: " + e.getMessage());

@@ -12,20 +12,23 @@ endif()
 set(ncnn_DIR ${CMAKE_SOURCE_DIR}/ncnn-20240820-android-vulkan/${ANDROID_ABI}/lib/cmake/ncnn)
 find_package(ncnn REQUIRED)
 
-
-# 创建共享库
+# 创建 yolo8 共享库
 add_library(
-        Cyolo5
+        yolo8
         SHARED
         YoloLayer.cpp
-        Cyolo5.cpp
+        utils.cpp
+        yolo8.cpp
 )
 
-# 链接 ncnn 库
+# 创建 yolo5 共享库
+
+
+# 链接 ncnn 库到 yolo8
 target_link_libraries(
-        Cyolo5
+        yolo8
         ncnn
         # 你可以在这里添加其他需要的库
 )
 
-# 清理 CMake 配置缓存，确保一切重新构建
+
