@@ -58,10 +58,7 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:$camerax_version"
     implementation "androidx.camera:camera-view:$camerax_version"
 
-    implementation 'org.tensorflow:tensorflow-lite:2.16.1' // TensorFlow Lite
-    implementation 'org.tensorflow:tensorflow-lite-gpu:2.16.1'
-    implementation 'org.pytorch:pytorch_android_lite:1.10.0' // PyTorch Lite
-    implementation 'org.pytorch:pytorch_android_torchvision_lite:1.10.0'
+    
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core

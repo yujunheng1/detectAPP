@@ -17,7 +17,6 @@ add_library(
         yolo8
         SHARED
         YoloLayer.cpp
-        utils.cpp
         yolo8.cpp
 )
 

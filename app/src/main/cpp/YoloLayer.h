@@ -5,8 +5,8 @@
 #ifndef MY_APPLICATION_YOLOLAYER_H
 #define MY_APPLICATION_YOLOLAYER_H
 #include <string>
-#include "net.h"
-#include "layer.h"
+#include "ncnn-20240820-android-vulkan/x86/include/ncnn/net.h"
+#include "ncnn-20240820-android-vulkan/armeabi-v7a/include/ncnn/layer.h"
 struct Object_box {
     float x;
     float y;
@@ -29,9 +29,6 @@ struct YoloLayer {
 extern YoloLayer layer_801;
 extern YoloLayer layer_781;
 extern YoloLayer layer_out;
-extern YoloLayer layer_out_8;
-extern YoloLayer layer_out_16;
-extern YoloLayer layer_out_32;
 
 void initializeAnchors();
 #endif //MY_APPLICATION_YOLOLAYER_H
